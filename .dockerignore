@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+infra/
+.vscode/
+*.pyc
+cdk.out/
+test_*.py
+setup.sh
+.dockerignore
+Dockerfile

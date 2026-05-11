@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="实时翻译">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a73e8">
+    <title>实时翻译</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 加载遮罩 */
+        .auth-loading {
+            position: fixed;
+            inset: 0;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .auth-loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #1a73e8;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .auth-loading .text {
+            color: #888;
+            font-size: 14px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* 顶部状态栏 */
+        .header {
+            background: #fff;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #e0e0e0;
+            flex-shrink: 0;
+            padding-top: env(safe-area-inset-top, 12px);
+        }
+
+        .header-title {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .status-dot.connected { background: #4caf50; }
+        .status-dot.recording { background: #f44336; animation: pulse 1s infinite; }
+        .status-dot.error { background: #ff9800; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .status-text {
+            font-size: 13px;
+            color: #888;
+            display: flex;
+            align-items: center;
+        }
+
+        /* 语言切换 */
+        .lang-switch {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #f0f0f0;
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            -webkit-user-select: none;
+            user-select: none;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .lang-switch:active {
+            background: #e0e0e0;
+        }
+
+        .lang-from, .lang-to {
+            color: #1a73e8;
+        }
+
+        .lang-arrow {
+            color: #888;
+            font-size: 12px;
+        }
+
+        /* 刷新按钮 */
+        .refresh-btn {
+            margin-left: 8px;
+            font-size: 18px;
+            color: #1a73e8;
+            cursor: pointer;
+            -webkit-user-select: none;
+            user-select: none;
+            transition: transform 0.3s;
+            display: inline-block;
+        }
+
+        .refresh-btn:active {
+            transform: rotate(180deg);
+        }
+
+        /* 用户信息区 */
+        .user-bar {
+            background: #fff;
+            padding: 6px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 12px;
+            color: #888;
+            flex-shrink: 0;
+        }
+
+        .user-email {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 60%;
+        }
+
+        .logout-btn {
+            color: #1a73e8;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 12px;
+            background: #e3f2fd;
+        }
+
+        .logout-btn:active {
+            background: #bbdefb;
+        }
+
+        /* Tab 切换 */
+        .tabs {
+            display: flex;
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            flex-shrink: 0;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px 0;
+            font-size: 14px;
+            font-weight: 500;
+            color: #888;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            color: #1a73e8;
+            border-bottom-color: #1a73e8;
+        }
+
+        /* 内容区域 */
+        .content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 12px 16px;
+            display: flex;
+            flex-direction: column-reverse;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(20px);
+        }
+
+        .panel-both {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding: 12px 16px;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+
+        .panel-both.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(20px);
+        }
+
+        /* 消息气泡 */
+        .msg {
+            margin-bottom: 8px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 15px;
+            line-height: 1.5;
+            max-width: 100%;
+            word-wrap: break-word;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg.partial {
+            background: #fff8e1;
+            color: #795548;
+            border: 1px solid #ffe082;
+            font-style: italic;
+        }
+
+        .msg.en {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            color: #333;
+        }
+
+        .msg.zh {
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            color: #1565c0;
+        }
+
+        /* 双语模式下的组合消息 */
+        .msg-pair {
+            margin-bottom: 12px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .msg-pair .en-text {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #333;
+            padding: 10px 14px;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px 12px 4px 4px;
+        }
+
+        .msg-pair .zh-text {
+            font-size: 15px;
+            line-height: 1.5;
+            color: #1565c0;
+            padding: 10px 14px;
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            border-top: none;
+            border-radius: 4px 4px 12px 12px;
+        }
+
+        .msg-pair .zh-text.loading {
+            color: #999;
+            font-style: italic;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            color: #bbb;
+            margin-top: 40%;
+            font-size: 15px;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        /* 底部控制栏 */
+        .controls {
+            background: #fff;
+            padding: 16px;
+            padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            flex-shrink: 0;
+        }
+
+        .record-btn {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 3px solid #1a73e8;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .record-btn:active {
+            transform: scale(0.92);
+        }
+
+        .record-btn .inner {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #1a73e8;
+            transition: all 0.3s;
+        }
+
+        .record-btn.recording {
+            border-color: #f44336;
+        }
+
+        .record-btn.recording .inner {
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            background: #f44336;
+        }
+
+        .clear-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            background: #fff;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #888;
+        }
+
+        .clear-btn:active {
+            background: #f0f0f0;
+        }
+
+        .record-label {
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+            margin-top: 4px;
+        }
+
+        /* TTS 开关 */
+        .tts-toggle {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+            background: #fff;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #bbb;
+            transition: all 0.2s;
+        }
+
+        .tts-toggle.active {
+            background: #e3f2fd;
+            border-color: #1a73e8;
+            color: #1a73e8;
+        }
+
+        .tts-toggle:active {
+            transform: scale(0.92);
+        }
+
+        .tts-label {
+            font-size: 10px;
+            color: #888;
+            text-align: center;
+            margin-top: 2px;
+        }
+
+        .app-hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 鉴权加载提示 -->
+    <div class="auth-loading" id="authLoading">
+        <div class="spinner"></div>
+        <div class="text" id="authLoadingText">登录检查中...</div>
+    </div>
+
+    <!-- 主应用界面（登录后显示） -->
+    <div id="appRoot" class="app-hidden" style="display:contents">
+        <div class="header">
+            <span class="header-title">实时翻译</span>
+            <div class="lang-switch" id="langSwitch">
+                <span class="lang-from" id="langFrom">EN</span>
+                <span class="lang-arrow" id="langArrow">→</span>
+                <span class="lang-to" id="langTo">中</span>
+            </div>
+            <span class="status-text">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">连接中...</span>
+                <span class="refresh-btn" id="refreshBtn" title="刷新">⟳</span>
+            </span>
+        </div>
+
+        <div class="user-bar">
+            <span class="user-email" id="userEmail">—</span>
+            <span class="logout-btn" id="logoutBtn">退出登录</span>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" data-tab="both">双语</div>
+            <div class="tab" data-tab="en">英文</div>
+            <div class="tab" data-tab="zh">中文</div>
+        </div>
+
+        <div class="content">
+            <!-- 双语面板 -->
+            <div class="panel-both" id="panelBoth">
+                <div id="bothContent">
+                    <div class="empty-state">
+                        <div class="icon">🎙️</div>
+                        <div>点击下方按钮开始录音</div>
+                    </div>
+                </div>
+            </div>
+            <!-- 英文面板 -->
+            <div class="panel hidden" id="panelEn">
+                <div id="enContent"></div>
+            </div>
+            <!-- 中文面板 -->
+            <div class="panel hidden" id="panelZh">
+                <div id="zhContent"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="clear-btn" id="clearBtn" title="清空">🗑️</div>
+            <div style="text-align:center">
+                <div class="record-btn" id="recordBtn">
+                    <div class="inner"></div>
+                </div>
+                <div class="record-label" id="recordLabel">点击录音</div>
+            </div>
+            <div style="text-align:center">
+                <div class="tts-toggle" id="ttsToggle" title="语音播报">🔇</div>
+                <div class="tts-label" id="ttsLabel">语音关</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ====================== Cognito 认证 ======================
+        let cognitoConfig = null;
+        let idToken = null;
+        let accessToken = null;
+
+        // 解析 JWT payload
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function isTokenValid(token) {
+            if (!token) return false;
+            const payload = parseJwt(token);
+            if (!payload || !payload.exp) return false;
+            return payload.exp * 1000 > Date.now() + 30000; // 至少还有 30 秒
+        }
+
+        // 从 URL hash 解析 implicit flow 返回的 token
+        function parseTokensFromHash() {
+            if (!window.location.hash) return null;
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            const id = params.get('id_token');
+            const access = params.get('access_token');
+            if (id && access) {
+                return { id_token: id, access_token: access };
+            }
+            return null;
+        }
+
+        function saveTokens(tokens) {
+            localStorage.setItem('id_token', tokens.id_token);
+            localStorage.setItem('access_token', tokens.access_token);
+            idToken = tokens.id_token;
+            accessToken = tokens.access_token;
+        }
+
+        function loadTokens() {
+            idToken = localStorage.getItem('id_token');
+            accessToken = localStorage.getItem('access_token');
+        }
+
+        function clearTokens() {
+            localStorage.removeItem('id_token');
+            localStorage.removeItem('access_token');
+            idToken = null;
+            accessToken = null;
+        }
+
+        function redirectToLogin() {
+            if (!cognitoConfig || !cognitoConfig.domain || !cognitoConfig.clientId) {
+                document.getElementById('authLoadingText').textContent = 'Cognito 未配置';
+                return;
+            }
+            const redirectUri = encodeURIComponent(window.location.origin + '/callback');
+            const scope = encodeURIComponent('openid email profile');
+            const url = `https://${cognitoConfig.domain}/login` +
+                `?client_id=${cognitoConfig.clientId}` +
+                `&response_type=token` +
+                `&scope=${scope}` +
+                `&redirect_uri=${redirectUri}`;
+            window.location.href = url;
+        }
+
+        function redirectToLogout() {
+            clearTokens();
+            if (!cognitoConfig || !cognitoConfig.domain || !cognitoConfig.clientId) {
+                window.location.href = '/';
+                return;
+            }
+            const logoutUri = encodeURIComponent(window.location.origin + '/');
+            const url = `https://${cognitoConfig.domain}/logout` +
+                `?client_id=${cognitoConfig.clientId}` +
+                `&logout_uri=${logoutUri}`;
+            window.location.href = url;
+        }
+
+        async function initAuth() {
+            try {
+                // 获取 Cognito 配置
+                const resp = await fetch('/cognito-config');
+                cognitoConfig = await resp.json();
+            } catch (e) {
+                document.getElementById('authLoadingText').textContent = '无法加载配置';
+                return false;
+            }
+
+            // 未配置 Cognito 时（本地开发），直接放行
+            if (!cognitoConfig.clientId || !cognitoConfig.domain) {
+                console.warn('Cognito 未配置，跳过登录');
+                return true;
+            }
+
+            // 1. 检查 URL hash 是否有 token（callback 流程）
+            const hashTokens = parseTokensFromHash();
+            if (hashTokens) {
+                saveTokens(hashTokens);
+                // 清除 hash 并跳回首页
+                window.history.replaceState(null, '', '/');
+            }
+
+            // 2. 检查 localStorage 中的 token
+            loadTokens();
+            if (isTokenValid(idToken)) {
+                return true;
+            }
+
+            // 3. token 无效，跳转登录
+            clearTokens();
+            redirectToLogin();
+            return false;
+        }
+
+        function showApp() {
+            document.getElementById('authLoading').style.display = 'none';
+            document.getElementById('appRoot').classList.remove('app-hidden');
+
+            // 显示用户邮箱
+            const payload = parseJwt(idToken);
+            if (payload && payload.email) {
+                document.getElementById('userEmail').textContent = payload.email;
+            } else if (payload && payload['cognito:username']) {
+                document.getElementById('userEmail').textContent = payload['cognito:username'];
+            }
+        }
+
+        // ====================== 主应用逻辑 ======================
+        let socket = null;
+        let isRecording = false;
+        let audioContext, processor;
+        let currentPartialDiv = null;
+        let currentTab = 'both';
+        let msgIndex = 0;
+        let currentMode = 'en2zh';
+
+        // TTS 状态
+        let ttsEnabled = false;
+        let ttsQueue = [];
+        let ttsPlaying = false;
+
+        function initApp() {
+            // 建立 Socket.IO 连接，携带 token
+            socket = io(window.location.origin, {
+                transports: ['polling', 'websocket'],
+                upgrade: true,
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 20000,
+                auth: {
+                    token: idToken || '',
+                },
+            });
+
+            bindEvents();
+            bindSocket();
+        }
+
+        function bindEvents() {
+            // 语言切换
+            document.getElementById('langSwitch').addEventListener('click', () => {
+                if (isRecording) return;
+                currentMode = currentMode === 'en2zh' ? 'zh2en' : 'en2zh';
+                document.getElementById('langFrom').textContent = currentMode === 'en2zh' ? 'EN' : '中';
+                document.getElementById('langTo').textContent = currentMode === 'en2zh' ? '中' : 'EN';
+            });
+
+            // 刷新
+            document.getElementById('refreshBtn').addEventListener('click', () => {
+                window.location.reload();
+            });
+
+            // 退出登录
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                if (confirm('确认退出登录？')) {
+                    redirectToLogout();
+                }
+            });
+
+            // TTS 开关
+            document.getElementById('ttsToggle').addEventListener('click', () => {
+                ttsEnabled = !ttsEnabled;
+                const btn = document.getElementById('ttsToggle');
+                const label = document.getElementById('ttsLabel');
+                if (ttsEnabled) {
+                    btn.classList.add('active');
+                    btn.textContent = '🔊';
+                    label.textContent = '语音开';
+                } else {
+                    btn.classList.remove('active');
+                    btn.textContent = '🔇';
+                    label.textContent = '语音关';
+                    ttsQueue = [];
+                    ttsPlaying = false;
+                }
+            });
+
+            // Tab 切换
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentTab = tab.dataset.tab;
+                    document.getElementById('panelBoth').classList.toggle('hidden', currentTab !== 'both');
+                    document.getElementById('panelEn').classList.toggle('hidden', currentTab !== 'en');
+                    document.getElementById('panelZh').classList.toggle('hidden', currentTab !== 'zh');
+                });
+            });
+
+            // 录音
+            document.getElementById('recordBtn').addEventListener('click', async () => {
+                if (!isRecording) {
+                    await startRecording();
+                } else {
+                    stopRecording();
+                }
+            });
+
+            // 清空
+            document.getElementById('clearBtn').addEventListener('click', () => {
+                document.getElementById('bothContent').innerHTML = '';
+                document.getElementById('enContent').innerHTML = '';
+                document.getElementById('zhContent').innerHTML = '';
+                currentPartialDiv = null;
+                msgIndex = 0;
+                ttsQueue = [];
+                ttsPlaying = false;
+            });
+        }
+
+        function bindSocket() {
+            socket.on('partial_transcript', (data) => {
+                if (!currentPartialDiv) {
+                    currentPartialDiv = document.createElement('div');
+                    currentPartialDiv.className = 'msg partial';
+                    document.getElementById('enContent').insertBefore(currentPartialDiv, document.getElementById('enContent').firstChild);
+
+                    const bothPartial = document.createElement('div');
+                    bothPartial.className = 'msg partial';
+                    bothPartial.id = 'bothPartial';
+                    document.getElementById('bothContent').prepend(bothPartial);
+                }
+                currentPartialDiv.textContent = data.text;
+                const bp = document.getElementById('bothPartial');
+                if (bp) bp.textContent = data.text;
+            });
+
+            socket.on('new_segment', (data) => {
+                if (currentPartialDiv) {
+                    currentPartialDiv.remove();
+                    currentPartialDiv = null;
+                    const bp = document.getElementById('bothPartial');
+                    if (bp) bp.remove();
+                }
+
+                msgIndex++;
+                const idx = msgIndex;
+
+                const enDiv = document.createElement('div');
+                enDiv.className = 'msg en';
+                enDiv.textContent = data.text;
+                document.getElementById('enContent').insertBefore(enDiv, document.getElementById('enContent').firstChild);
+
+                const pair = document.createElement('div');
+                pair.className = 'msg-pair';
+                pair.id = 'pair-' + idx;
+                pair.innerHTML = `
+                    <div class="en-text">${escapeHtml(data.text)}</div>
+                    <div class="zh-text loading" id="zh-${idx}">翻译中...</div>
+                `;
+                document.getElementById('bothContent').prepend(pair);
+                window._lastMsgIdx = idx;
+            });
+
+            socket.on('translation', (data) => {
+                const zhDiv = document.createElement('div');
+                zhDiv.className = 'msg zh';
+                zhDiv.textContent = data.text;
+                document.getElementById('zhContent').insertBefore(zhDiv, document.getElementById('zhContent').firstChild);
+
+                const loadingItems = document.querySelectorAll('.zh-text.loading');
+                if (loadingItems.length > 0) {
+                    const last = loadingItems[loadingItems.length - 1];
+                    last.textContent = data.text;
+                    last.classList.remove('loading');
+                }
+
+                enqueueTTS(data.text);
+            });
+
+            socket.on('error', (data) => {
+                setStatus('错误: ' + data.text, 'error');
+                if (data.text && data.text.toLowerCase().includes('unauthorized')) {
+                    clearTokens();
+                    setTimeout(() => redirectToLogin(), 1000);
+                    return;
+                }
+                stopRecording();
+            });
+
+            socket.on('connect', () => setStatus('已连接', 'connected'));
+            socket.on('disconnect', () => setStatus('重连中...', 'error'));
+            socket.on('reconnect', () => {
+                setStatus('已重连', 'connected');
+                if (isRecording) {
+                    socket.emit('start_transcription', { mode: currentMode });
+                    setStatus('录音中', 'recording');
+                }
+            });
+            socket.on('connect_error', (err) => {
+                if (err && err.message && err.message.toLowerCase().includes('unauthorized')) {
+                    clearTokens();
+                    redirectToLogin();
+                }
+            });
+        }
+
+        function enqueueTTS(text) {
+            if (!ttsEnabled) return;
+            const lang = currentMode === 'en2zh' ? 'zh' : 'en';
+            ttsQueue.push({ text, lang });
+            if (!ttsPlaying) playNextTTS();
+        }
+
+        async function playNextTTS() {
+            if (ttsQueue.length === 0) {
+                ttsPlaying = false;
+                return;
+            }
+            ttsPlaying = true;
+            const { text, lang } = ttsQueue.shift();
+            try {
+                const resp = await fetch('/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + (idToken || ''),
+                    },
+                    body: JSON.stringify({ text, lang }),
+                });
+                if (!resp.ok) throw new Error('TTS failed');
+                const arrayBuffer = await resp.arrayBuffer();
+                const ttsCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await ttsCtx.decodeAudioData(arrayBuffer);
+                const source = ttsCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(ttsCtx.destination);
+                source.onended = () => {
+                    ttsCtx.close();
+                    playNextTTS();
+                };
+                source.start(0);
+            } catch (e) {
+                console.error('TTS error:', e);
+                playNextTTS();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                setStatus('启动中...', 'connected');
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(stream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+                processor.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    const pcmData = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        pcmData[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                    }
+                    const audioData = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
+                    socket.emit('audio_data', { audio: audioData });
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+                socket.emit('start_transcription', { mode: currentMode });
+
+                isRecording = true;
+                document.getElementById('recordBtn').classList.add('recording');
+                document.getElementById('recordLabel').textContent = '点击停止';
+                setStatus('录音中', 'recording');
+
+                const empty = document.querySelector('.empty-state');
+                if (empty) empty.remove();
+            } catch (error) {
+                setStatus('错误: ' + error.message, 'error');
+            }
+        }
+
+        function stopRecording() {
+            if (processor) processor.disconnect();
+            if (audioContext) audioContext.close();
+            if (socket) socket.emit('stop_transcription');
+
+            isRecording = false;
+            document.getElementById('recordBtn').classList.remove('recording');
+            document.getElementById('recordLabel').textContent = '点击录音';
+            setStatus('已停止', 'connected');
+        }
+
+        function setStatus(text, type) {
+            document.getElementById('statusText').textContent = text;
+            const dot = document.getElementById('statusDot');
+            dot.className = 'status-dot';
+            if (type) dot.classList.add(type);
+        }
+
+        function escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+        // PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/service-worker.js')
+                .then(() => console.log('SW registered'))
+                .catch((e) => console.log('SW failed:', e));
+        }
+
+        // ====================== 启动 ======================
+        (async () => {
+            const ok = await initAuth();
+            if (ok) {
+                showApp();
+                initApp();
+            }
+        })();
+    </script>
+</body>
+
+</html>
