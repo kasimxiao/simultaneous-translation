@@ -2,6 +2,12 @@
 
 基于 AWS 的实时语音识别（ASR）与 AI 同声传译系统，支持英中/中英双向翻译，提供 WebSocket 实时流式传输和 PWA 移动端体验。
 
+## 演示
+
+https://github.com/user-attachments/assets/demo.mp4
+
+<video src="demo.mp4" controls width="100%"></video>
+
 ## 架构概览
 
 ```mermaid
