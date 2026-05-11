@@ -4,9 +4,7 @@
 
 ## 演示
 
-> 在 GitHub 仓库页面编辑 README，将 demo.mp4 拖入编辑框即可自动生成视频链接并替换下方占位符。
-
-https://github.com/user-attachments/assets/REPLACE_WITH_UPLOADED_VIDEO_ID.mp4
+https://github.com/kasimxiao/simultaneous-translation/raw/main/demo.mp4
 
 ## 架构概览
 
