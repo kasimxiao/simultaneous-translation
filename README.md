@@ -4,7 +4,9 @@
 
 ## 演示
 
-https://github.com/kasimxiao/simultaneous-translation/raw/main/demo.mp4
+[![Demo](demo.gif)](https://github.com/kasimxiao/simultaneous-translation/releases/download/v1.0/demo.mp4)
+
+> 点击上方 GIF 预览可下载完整演示视频
 
 ## 架构概览
 
