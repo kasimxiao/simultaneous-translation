@@ -4,9 +4,9 @@
 
 ## 演示
 
-https://github.com/user-attachments/assets/demo.mp4
+> 在 GitHub 仓库页面编辑 README，将 demo.mp4 拖入编辑框即可自动生成视频链接并替换下方占位符。
 
-<video src="demo.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/REPLACE_WITH_UPLOADED_VIDEO_ID.mp4
 
 ## 架构概览
 
